@@ -305,7 +305,7 @@ h1 span {
 .packet {
   position: absolute;
   left: 13%;
-  top: 46%;
+  top: 34%;
   height: 9px;
   width: 9px;
   background: var(--lime);
@@ -337,7 +337,7 @@ h1 span {
   font-weight: 600;
 }
 .current-stage p {
-  font-size: 0.875rem;
+  font-size: 1rem;
   color: var(--muted);
   margin: 0;
   line-height: 1.7;
@@ -566,7 +566,7 @@ h1 span {
   border-radius: 6px;
   padding: 7px 10px;
   min-height: 38px;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   letter-spacing: 0.02em;
 }
 .concept.active {
@@ -698,13 +698,13 @@ footer {
     margin-bottom: 10px;
   }
   .network-node strong {
-    font-size: 0.75rem;
+    font-size: 0.875rem;
   }
   .node-state {
     font-size: 0.75rem;
   }
   .packet {
-    top: 43%;
+    top: 34%;
   }
   .current-stage {
     padding: 19px 18px;
