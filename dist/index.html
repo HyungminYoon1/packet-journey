@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="주소를 입력한 순간부터 웹페이지가 나타날 때까지. DNS, 연결, HTTP, 캐시를 눈으로 따라가는 인터랙티브 네트워크 시뮬레이터."
+    />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'"
+    />
+    <meta name="theme-color" content="#0a1020" />
+    <title>PACKET JOURNEY — 요청 하나의 여행</title>
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230a1020'/%3E%3Cpath d='M7 16h18M16 7v18' stroke='%23c7ff63' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%237b75ff'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./src/app.js"></script>
+  </head>
+  <body>
+    <a class="skip" href="#simulator">시뮬레이터로 바로가기</a>
+    <header class="topbar">
+      <a class="wordmark" href="./"
+        ><span class="brand-icon" aria-hidden="true">⌘</span> PACKET<span
+          >JOURNEY</span
+        ></a
+      ><span class="header-caption">ONE REQUEST. MANY CONNECTIONS.</span
+      ><a
+        href="https://github.com/HyungminYoon1/packet-journey"
+        class="source-link"
+        target="_blank"
+        rel="noopener noreferrer"
+        >소스 코드</a
+      >
+    </header>
+    <main id="simulator">
+      <div class="intro">
+        <div>
+          <p class="eyebrow">THE INTERNET, MADE VISIBLE</p>
+          <h1>엔터를 누른 순간,<br /><span>여행은 시작됩니다.</span></h1>
+        </div>
+        <p class="intro-note">
+          주소 하나가 웹페이지가 되기까지.<br />네트워크의 보이지 않는 과정을
+          따라가보세요.
+        </p>
+      </div>
+      <div class="workspace">
+        <section class="journey" aria-label="네트워크 요청 시뮬레이터">
+          <div class="address-bar">
+            <span class="https-tag">HTTPS</span
+            ><code>https://museum.example/exhibit</code
+            ><span class="model-tag">교육용 가상 주소</span>
+          </div>
+          <div class="journey-top">
+            <div>
+              <span class="eyebrow">REQUEST MAP</span>
+              <h2>요청 하나의 여행</h2>
+            </div>
+            <span class="status-badge" id="run-status">시작할 준비 완료</span>
+          </div>
+          <div class="network-map" id="network-map">
+            <svg
+              class="connections"
+              viewBox="0 0 800 280"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M100 140 L300 140 L500 140 L700 140"
+                class="connection-base"
+              />
+              <path
+                d="M100 140 L300 140 L500 140 L700 140"
+                class="connection-flow"
+              />
+            </svg>
+            <div class="network-node" data-node="browser">
+              <div class="node-icon" aria-hidden="true">▣</div>
+              <strong>브라우저</strong><small>요청을 시작하는 곳</small
+              ><span class="node-state">READY</span>
+            </div>
+            <div class="network-node" data-node="dns">
+              <div class="node-icon" aria-hidden="true">◎</div>
+              <strong>DNS</strong><small>이름을 주소로</small
+              ><span class="node-state">WAITING</span>
+            </div>
+            <div class="network-node" data-node="connection">
+              <div class="node-icon" aria-hidden="true">⋈</div>
+              <strong>보안 연결</strong><small>TCP + TLS</small
+              ><span class="node-state">WAITING</span>
+            </div>
+            <div class="network-node" data-node="server">
+              <div class="node-icon" aria-hidden="true">▤</div>
+              <strong>웹 서버</strong><small>요청에 응답하는 곳</small
+              ><span class="node-state">WAITING</span>
+            </div>
+            <span class="packet" id="packet" aria-hidden="true"></span>
+          </div>
+          <div class="current-stage">
+            <span class="step-count" id="step-count">00 / 07</span>
+            <div>
+              <h3 id="stage-title">어떤 길을 지나갈까요?</h3>
+              <p id="stage-description" aria-live="polite" aria-atomic="true">
+                재생을 누르거나 한 단계씩 진행해보세요. 캐시와 오류 상황을
+                바꾸면 여행 경로도 달라집니다.
+              </p>
+            </div>
+          </div>
+          <div class="playback">
+            <button class="button primary" id="play" aria-pressed="false">
+              여행 시작</button
+            ><button class="button secondary" id="step">한 단계씩</button
+            ><button
+              class="button icon-button"
+              id="restart"
+              aria-label="여행 처음부터 다시 시작"
+            >
+              ↻
+            </button>
+            <div class="progress"><div id="progress-fill"></div></div>
+          </div>
+          <div class="map-bottom">
+            <span>시뮬레이션 · 실제 요청 없음</span
+            ><span id="elapsed">모델 경과 시간 0 ms</span>
+          </div>
+        </section>
+        <aside class="controls" aria-labelledby="controls-title">
+          <p class="eyebrow">CHANGE THE CONDITIONS</p>
+          <h2 id="controls-title">같은 주소,<br />다른 여정.</h2>
+          <label for="cache">캐시 상태</label
+          ><select id="cache">
+            <option value="none">첫 방문 · 캐시 없음</option>
+            <option value="dns">DNS 캐시 있음</option>
+            <option value="http">최신 페이지 캐시 있음</option>
+          </select>
+          <label for="scenario">네트워크 상황</label
+          ><select id="scenario">
+            <option value="normal">정상 요청</option>
+            <option value="dns-error">DNS 조회 실패</option>
+            <option value="server-error">서버 오류 · HTTP 500</option>
+            <option value="offline">인터넷 연결 끊김</option>
+          </select>
+          <label for="latency"
+            >왕복 지연 가정 <output id="latency-output">80 ms</output></label
+          ><input
+            id="latency"
+            type="range"
+            min="20"
+            max="300"
+            step="10"
+            value="80"
+          />
+          <label for="speed">재생 속도</label
+          ><select id="speed">
+            <option value="1">천천히 · 1×</option>
+            <option value="2">빠르게 · 2×</option>
+            <option value=".5">자세히 · 0.5×</option>
+          </select>
+          <div class="time-estimate">
+            <span>이 조건의 모델 완료 시간</span
+            ><strong id="estimated-time">—<small> ms</small></strong>
+            <p id="cache-hint">네트워크를 거쳐 페이지를 가져옵니다.</p>
+          </div>
+          <p class="control-note">
+            시간은 학습을 위한 가정값입니다. 실제 속도 측정이나 서버 진단 결과가
+            아닙니다.
+          </p>
+        </aside>
+      </div>
+      <div class="details-grid">
+        <section class="trace-panel" aria-labelledby="trace-title">
+          <div class="section-heading">
+            <h2 id="trace-title">여행 기록</h2>
+            <span id="trace-count">0 EVENTS</span>
+          </div>
+          <ol id="trace">
+            <li class="empty-trace">
+              요청을 시작하면 단계별 기록이 여기에 나타납니다.
+            </li>
+          </ol>
+        </section>
+        <section class="learn-panel" aria-labelledby="learn-title">
+          <p class="eyebrow">BEHIND THE REQUEST</p>
+          <h2 id="learn-title">아는 만큼,<br />인터넷이 선명해집니다.</h2>
+          <div class="concepts">
+            <button
+              class="concept active"
+              data-concept="dns"
+              aria-pressed="true"
+            >
+              DNS</button
+            ><button class="concept" data-concept="tls" aria-pressed="false">
+              TCP / TLS</button
+            ><button class="concept" data-concept="http" aria-pressed="false">
+              HTTP</button
+            ><button class="concept" data-concept="cache" aria-pressed="false">
+              CACHE
+            </button>
+          </div>
+          <p id="concept-text">
+            DNS는 도메인 이름에 대응하는 IP 주소를 찾습니다. 이 모델에서는 매번
+            새로운 연결을 만들며, DNS 캐시가 있으면 조회 단계를 건너뜁니다.
+          </p>
+        </section>
+      </div>
+      <details class="limitations">
+        <summary>이 모델의 범위와 참고 자료</summary>
+        <p>
+          HTTPS over TCP를 단순화한 교육용 모델입니다. 연결 재사용, 병렬 요청,
+          DNS 재귀 조회, CDN, HTTP/3의 QUIC 연결, 응답 캐시 재검증, 서비스 워커
+          등은 생략합니다. 점 하나는 실제 패킷이 아니라 현재 진행 중인 단계를
+          나타냅니다.
+        </p>
+        <p>
+          페이지 캐시는 재검증 없이 사용할 수 있는 최신 응답을 가정합니다. 이
+          경우 네트워크 오류가 있어도 캐시 내용을 보여줄 수 있습니다. HTTP 500은
+          서버에서 받은 오류 응답이며, 연결 실패와는 다릅니다.
+        </p>
+        <p>
+          입력은 브라우저 메모리에서만 사용하며, 분석 도구나 외부 API 요청은
+          없습니다. GitHub 호스팅 자체 로그는 별개입니다. AI 에이전트의 도움을
+          받아 제작한 학습용 프로젝트입니다.
+        </p>
+        <p>
+          <a
+            href="https://developer.mozilla.org/ko/docs/Learn_web_development/Howto/Web_mechanics/How_does_the_Internet_work"
+            target="_blank"
+            rel="noopener noreferrer"
+            >MDN · 인터넷은 어떻게 동작하는가?</a
+          >
+          ·
+          <a
+            href="https://developer.mozilla.org/ko/docs/Web/HTTP/Overview"
+            target="_blank"
+            rel="noopener noreferrer"
+            >MDN · HTTP 개요</a
+          >
+          ·
+          <a
+            href="https://developer.mozilla.org/ko/docs/Web/HTTP/Caching"
+            target="_blank"
+            rel="noopener noreferrer"
+            >MDN · HTTP 캐싱</a
+          >
+        </p>
+      </details>
+    </main>
+    <footer>
+      <span>PACKET JOURNEY · 보이지 않는 연결을 보는 방법</span
+      ><span>BUILT FOR THE CURIOUS.</span>
+    </footer>
+    <noscript
+      ><p class="noscript">
+        시뮬레이션은 JavaScript를 켜야 동작합니다.
+      </p></noscript
+    >
+  </body>
+</html>
