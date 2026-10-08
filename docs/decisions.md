@@ -1,5 +1,23 @@
 # Decision log
 
+## D08 — Evidence-led missions (2026-10-08 redesign)
+
+- Context: owner approved a complete redesign around solving connection incidents instead of passively watching a route.
+- Options: real DNS/server diagnosis with extra services; fabricated real measurements; predefined deterministic case simulation.
+- Decision: six cases covering DNS, HTTP 500, offline, fresh response cache, valid DNS cache and repeat-visit optimization. Inspect the full trace before selecting actions; wrong answers give causal feedback without changing configuration; correct actions replay the changed flow and show before/after.
+- Rationale: a static Pages project can teach causal differences without claiming to inspect or repair visitors' devices.
+- Affected: dist/index.html, styles.css, src/app.js, missions.js, test/missions.test.js, README.md.
+- Review: cache-removal cases intentionally reveal a failure; successful learning does not always mean a successful request. Restore the free simulator and its existing agent tools; no backend, network calls or system access.
+
+## D09 — Local score and transparent presentation
+
+- Context: meaningful replay is desired without more defensive labels or personal disclosure.
+- Options: persistent/global leaderboard; local per-case scores with no retention.
+- Decision: 100 points per case, minus 15 per wrong answer and 20 for an optional hint, floor 10; keep session-best per case in memory. Remove unused example address and the repeated prominent timing warning; retain one simulation identity and fold model assumptions into expandable help.
+- Rationale: rewards investigation without invented rankings or extra storage. Keeps actual activity central while preserving the distinction between modeled and measured time.
+- Affected: src/app.js, missions.js, index.html, README.md.
+- Review: client-side scoring is not tamper-proof and has no competitive or diagnostic authority. Reload clears all progress; old D06's reserved-address choice is superseded by removing that display.
+
 ## D06 — Educational network model
 
 - Context: a Pages site cannot inspect arbitrary remote DNS/TCP/TLS flows from a browser without adding services.
@@ -9,15 +27,14 @@
 - Affected: dist/src/model.js, app.js, index.html, test/model.test.js.
 - Review: any future real measurements require a separate approved architecture, privacy review and evidence labels.
 
-+## D07 — Public commit identity
-+- Context: the existing global Git email is not a GitHub noreply address.
-+- Options: reuse it; change global settings; use repository-local GitHub noreply identity.
-+- Decision: configure only these new repositories with the verified account's GitHub noreply identity.
-+- Rationale: public commits should not expose a private email, and unrelated repositories must keep their settings.
-+- Affected: local .git/config (not tracked), public commit metadata.
-+- Review: owner may change the repo-local identity later; never print the pre-existing email.
+## D07 — Public commit identity
 
--
+- Context: the existing global Git email is not a GitHub noreply address.
+- Options: reuse it; change global settings; use repository-local GitHub noreply identity.
+- Decision: configure only these repositories with the verified account's GitHub noreply identity.
+- Rationale: public commits should not expose a private email, and unrelated repositories must keep their settings.
+- Affected: local .git/config (not tracked), public commit metadata.
+- Review: owner may change the repo-local identity later; never print the pre-existing email.
 
 2026-10-08. Authorized automated implementation session: two independent repositories, push and GitHub Pages deployment.
 

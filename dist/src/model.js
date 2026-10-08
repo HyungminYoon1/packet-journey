@@ -97,7 +97,7 @@ export function createJourney({
     "request",
     "server",
     "HTTP 요청을 보냅니다.",
-    "GET /exhibit 요청을 서버로 보냅니다. 편도 전송 시간을 왕복 지연의 절반으로 가정합니다.",
+    "GET / 요청을 서버로 보냅니다. 편도 전송 시간을 왕복 지연의 절반으로 가정합니다.",
     Math.round(latency / 2),
   );
   if (scenario === "server-error")
