@@ -5,8 +5,13 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { createJourney, concepts } from "../dist/src/model.js";
 import { missions, assessAction, operations, createOperation, operationView, takeDecision, useOperationHint } from "../dist/src/missions.js";
+import { diagnostics } from "../dist/src/diagnostics.js";
+import { createProgressStore, SUMMARY_KEY, RECORD_KEY } from "../dist/src/progress.js";
 
-function mount() {
+function mount(storage = (() => {
+  const data = new Map();
+  return { data, getItem: (key) => data.get(key) ?? null, setItem: (key, value) => data.set(key, value), removeItem: (key) => data.delete(key) };
+})()) {
   const html = readFileSync(new URL("../dist/index.html", import.meta.url), "utf8");
   class Element {
     constructor(tag = "div") { this.tag = tag; this.children = []; this.className = ""; this.dataset = {}; this.listeners = new Map(); this.value = ""; }
@@ -58,6 +63,7 @@ function mount() {
   const source = readFileSync(new URL("../dist/src/app.js", import.meta.url), "utf8").replace(/^import[\s\S]*?;/gm, "");
   vm.runInNewContext(source, {
     createJourney, concepts, missions, assessAction, operations, createOperation, operationView, takeDecision, useOperationHint,
+    diagnostics, createProgressStore: (ids) => createProgressStore(ids, storage),
     document, window: { addEventListener() {} }, matchMedia: () => ({ matches: false }), AbortController,
     setTimeout(callback) { callbacks.set(++timerId, callback); return timerId; }, clearTimeout(id) { callbacks.delete(id); },
   });
@@ -68,7 +74,9 @@ function mount() {
     }
     assert.ok(limit > 0, "timer playback should terminate");
   };
-  return { ids, tools, drain, choose(label) {
+  return { ids, tools, drain, storage, select(id, value) {
+    ids.get(id).value = value; ids.get(id).listeners.get("change")?.();
+  }, choose(label) {
     const button = ids.get("operation-choices").children.find((child) => child.children[0].textContent === label);
     assert.ok(button, `visible choice: ${label}`); button.click();
   } };
@@ -115,4 +123,72 @@ test("WebMCP rejects missing/invalid inputs before changing visible state (Node 
   const advance = ui.tools.get("advance_journey");
   assert.throws(() => advance.execute({ count: 8 }));
   assert.equal(advance.execute({ count: 3 }).done, true);
+});
+
+test("diagnostic walkthroughs persist only independent final completion (Node test double)", () => {
+  const ui = mount(), get = (id) => ui.ids.get(id);
+  assert.equal(ui.storage.data.size, 0, "initial view writes no achievements or summary");
+  ui.select("operation-picker", "cache-expiry");
+  assert.equal(ui.storage.data.size, 0);
+  ui.choose("만료 전 응답 사용"); ui.drain();
+  ui.choose("만료 시점까지 시간 진행"); ui.drain();
+  assert.match(get("diagnostic-summary").textContent, /1000 \/ 1000 ms \(가정\)/);
+  ui.choose("ETag로 조건부 재검증"); ui.drain();
+  assert.match(get("diagnostic-summary").textContent, /HTTP 304/);
+  assert.equal(ui.storage.data.size, 0, "repair alone is not diagnosis completion");
+  ui.choose("유효 시간이 지나 재검증함"); ui.drain();
+  assert.match(get("operation-result-title").textContent, /진단 완료 · 100 PT/);
+  for (const id of ["operation-evidence", "stage-description", "operation-feedback"])
+    assert.equal(get(id).hidden, true, "completed explanation belongs only in the result");
+  assert.equal(JSON.parse(ui.storage.getItem(SUMMARY_KEY)).apps["packet-journey"].completed, 1);
+  assert.match(get("saved-progress").textContent, /1 \/ 42/);
+  const raw = ui.storage.getItem(SUMMARY_KEY);
+  get("play").click(); ui.drain();
+  assert.equal(ui.storage.getItem(SUMMARY_KEY), raw, "replay cannot update the completion timestamp");
+  const reload = mount(ui.storage);
+  assert.match(reload.ids.get("saved-progress").textContent, /1 \/ 42/);
+  get("free-mode").click();assert.equal(get("stage-description").hidden, false);
+  ui.select("operation-picker", "cache-expiry");
+  assert.equal(ui.storage.getItem(SUMMARY_KEY), raw, "reload is read-only");
+  get("clear-progress").click();
+  assert.equal(ui.storage.getItem(RECORD_KEY), null);
+  assert.equal(JSON.parse(ui.storage.getItem(SUMMARY_KEY)).apps["packet-journey"], undefined);
+  get("play").click(); ui.drain();
+  assert.equal(ui.storage.getItem(RECORD_KEY), null, "replay after clear cannot recreate completion");
+  ui.select("operation-picker", "retry-cascade");
+  ui.choose("현재 재시도 기록 확인"); ui.drain();
+  assert.match(get("operation-evidence").textContent, /접수 27개/);
+  ui.choose("재시도는 클라이언트 한 곳에서"); ui.drain();
+  assert.match(get("operation-evidence").textContent, /27 → 3개/);
+  ui.choose("겹친 재시도가 대기열을 늘림"); ui.drain();
+  assert.match(get("operation-result-title").textContent, /진단 완료 · 100 PT/);
+  assert.equal(JSON.parse(ui.storage.getItem(SUMMARY_KEY)).apps["packet-journey"].completed, 1);
+});
+
+test("hinted and mistaken solutions display results without independent badges (Node test double)", () => {
+  for (const assisted of ["hint", "wrong"]) {
+    const ui = mount(); ui.select("operation-picker", "cache-expiry");
+    ui.choose("만료 전 응답 사용"); ui.drain();
+    ui.choose("만료 시점까지 시간 진행"); ui.drain();
+    if (assisted === "hint") ui.ids.get("operation-hint").click();
+    else { ui.choose("재검증 없이 저장본 사용"); ui.drain(); }
+    ui.choose("ETag로 조건부 재검증"); ui.drain();
+    ui.choose("유효 시간이 지나 재검증함"); ui.drain();
+    assert.equal(ui.ids.get("operation-result").hidden, false);
+    assert.equal(ui.storage.getItem(RECORD_KEY), null);
+    assert.equal(ui.storage.getItem(SUMMARY_KEY), null);
+  }
+});
+
+test("base cases retain scoring while successful unaided resolution saves an achievement (Node test double)", () => {
+  for (const assisted of [false, true]) {
+    const ui = mount(); ui.ids.get("mission-mode").click();
+    ui.ids.get("play").click(); ui.drain();
+    if (assisted) ui.ids.get("hint").click();
+    const button = ui.ids.get("action-options").children.find((b) => b.children[1].textContent === "DNS 조회 문제 해결 후 재시도");
+    assert.ok(button); button.click(); ui.drain();
+    assert.equal(ui.ids.get("resolution").hidden, false);
+    assert.equal(ui.storage.getItem(RECORD_KEY) === null, assisted);
+    if (!assisted) assert.deepEqual(JSON.parse(ui.storage.getItem(RECORD_KEY)).achievements, ["case:dns"]);
+  }
 });

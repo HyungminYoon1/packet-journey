@@ -1,5 +1,34 @@
 # Decision log
 
+## D13 — Cache expiry and evaluated retry diagnostics (2026-10-09, LOCAL)
+
+- Context: owner requested concrete cache-expiry and retry-cascade scenarios, executable branch choices and observed cause/result, preserving the old campaign.
+- Options: append static explanations; replace the campaign; add separate pure diagnostic scenarios sharing the existing playback and choices.
+- Decision: preserve 4 original operations and 6 cases. Add 2 diagnostics × 3 conditions × 2 difficulties through diagnostics.js. Cache age begins at 200 ms; max-age is 1/2/3 seconds with must-revalidate. Observe a fresh cache hit, advance exactly to expiry, then conditionally GET with ETag. Unchanged content returns 304 without a body; condition 02 returns 200 with v2. Freshness restarts on response receipt; rendering adds 25 ms. Reuse without validation and DNS clearing do not resolve expiry.
+- Decision: the retry scenario has 3 logical GET clients, one FIFO worker, per-job service 120/160/200 ms, and each layer's timeout 80/100/120 ms. Client and gateway each allow at most 3 attempts. Abandonment does not cancel the server job or propagate cancellation to an older gateway group. A response exactly at the deadline is late. Replies stop future retries only when they still belong to the active attempt. The original policy creates 27 jobs and a maximum 24-job waiting queue. The repair removes gateway retries and uses a client timeout of 3 × service + 1 ms, letting all 3 original jobs complete; repeated policy and doubled timeout are genuinely re-simulated and assessed. Playback waits for each request group's queue to drain before starting a comparison group, so new batches are not claimed to run on an old queue. The final cause choice is required for completion.
+- Rationale: exposes expired-but-retained cache content and duplicate work after caller timeout without fake network measurement, destinations, random score injection or a backend. Timings remain assumed units. Browser playback speed never changes model time.
+- Affected: diagnostics.js, missions.js dispatch, app.js, index.html, styles.css, model.js concepts, diagnostic/interface tests, README.md and architecture.md.
+- Follow-up: model omits retry jitter, adaptive deadlines, parallel workers, server cancellation/idempotency mechanisms and real HTTP Date/Age transport corrections. Its GET-only duplicate-work model is not advice to retry side-effecting requests. Official MDN caching and AWS retry references were opened successfully. Main handles browser/viewport QA and publication.
+
+## D14 — Bounded local achievements and gallery summary
+
+- Context: user explicitly approved local persistence and the cross-app `web-lab-progress-v1` schema; earlier D02/D09/D12 prohibited persistent progress.
+- Options: retain session-only progress; copy histories to the gallery; persist only known independent completion IDs and publish aggregate counts.
+- Decision: supersede only the no-persistence portions of D02/D09/D12. progress.js owns localStorage. The private key holds only version and a deduplicated subset of 42 whitelisted achievement IDs. A completed, zero-fault, no-hint run qualifies after its final trace; wrong choices may still finish and score but do not earn independent badges. A per-run UI latch prevents replay or clear-then-replay from creating completion. No hidden completion/score-setting tool is introduced.
+- Decision: summary is recomputed from read-back durable IDs on actual completion, using a real current ISO timestamp. RMW keeps other records. Whitelist is the 15 service IDs inventoried by directory name; web-lab and QA/output directories are excluded. Exact schema, bounds, timestamp and version validation fail safely. Each payload is limited to 8192 characters; accepted fields contain ASCII only. Invalid private state is not silently reset; the visible clear control can remove it. Invalid shared state is never overwritten. Clearing deletes only this app's private key and its aggregate entry, never localStorage.clear(). No initial-view, hint, example or mere-visit writes. No names, seeds, actions, score histories or files in either key.
+- Rationale: allows the same-origin gallery to display truthful device-local completion without observing private run data. Storage denial/quota failure cannot invent a durable count. Failure is shown concisely; the UI remains playable.
+- Affected: progress.js, app.js, index.html, styles.css, progress/interface tests, architecture.md, README.md.
+- Follow-up: client storage can be edited manually and is not trusted ranking state. Same-origin requirement and best-effort cross-tab RMW remain documented. Only the main agent modifies/verifies gallery copies; this repo has no account access, provisioning, public ranking or API.
+
+## D15 — Concise presentation and provenance
+
+- Context: user requested removal of filler, promotional and repeated defensive copy while retaining controls, objectives, assumptions and privacy/provenance.
+- Options: remove all model caveats; keep repeated disclaimers; concise controls plus units and one expandable model/privacy/reference section.
+- Decision: remove decorative slogans and repeated timing disclaimer, label main numeric displays `ms (가정)`, add useful cache/request comparison state and retain a single simulation label and compact model/privacy/AI attribution. Keep native responsive controls and touch targets.
+- Rationale: the actual trace and result remain central and the source of modeled times stays visible.
+- Affected: app.js, model.js, missions.js explanations, index.html, styles.css and README.md.
+- Follow-up: main captures meaningful actual result screens, including 304/200 and 27-to-3 request reduction at mobile widths. Browser E2E and screenshots are NOT_RUN by this implementation agent.
+
 ## D10 — Sequential connection operations (2026-10-09, local implementation only)
 
 - Context: owner requested more interactive and challenging networking learning; the existing six cases ended after a single correct action and wrong choices had no model consequences.

@@ -1,4 +1,5 @@
 import { createTrace, createRouteTrace, transferPackets } from "./model.js";
+import { diagnostics, createDiagnostic, diagnosticView, takeDiagnosticDecision } from "./diagnostics.js";
 
 export const missions = Object.freeze([
   {
@@ -28,7 +29,7 @@ export const missions = Object.freeze([
     ],
     after: { scenario: "normal", cache: "none", latency: 80 },
     explanation:
-      "DNS 조회가 실패하면 연결할 IP 주소를 얻지 못합니다. DNS 문제를 해결하자 TCP와 TLS, HTTP 요청으로 진행합니다. DNS 서버 변경이 모든 DNS 문제의 해결책인 것은 아니므로 실제 환경에서는 도메인·리졸버·설정을 함께 확인해야 합니다.",
+      "DNS 실패로 연결할 주소를 얻지 못했습니다. 조회 문제를 해결하자 TCP → TLS → HTTP 응답으로 진행했습니다.",
   },
   {
     id: "server",
@@ -57,7 +58,7 @@ export const missions = Object.freeze([
     ],
     after: { scenario: "normal", cache: "none", latency: 80 },
     explanation:
-      "500은 서버 내부에서 요청 처리가 실패했다는 응답입니다. 이 모델에서는 서버 오류를 수정한 뒤 200 응답을 받습니다. DNS·연결·TLS가 정상이라는 기록을 먼저 확인하면 불필요한 클라이언트 설정 변경을 줄일 수 있습니다.",
+      "DNS·TCP·TLS는 정상이었고 서버가 500을 반환했습니다. 서버 처리 오류를 수정하자 200 응답을 받았습니다.",
   },
   {
     id: "offline",
@@ -85,7 +86,7 @@ export const missions = Object.freeze([
     ],
     after: { scenario: "normal", cache: "none", latency: 80 },
     explanation:
-      "사용할 페이지 캐시가 없으면 서버에 도달해야 합니다. 인터넷 연결을 복구하자 DNS부터 HTTP 응답까지 진행됩니다. DNS 캐시는 응답 내용이 아니므로 오프라인 페이지를 제공하지 못합니다.",
+      "응답 캐시가 없어 서버 연결이 필요했습니다. 네트워크를 복구하자 DNS부터 HTTP 응답까지 진행했습니다. DNS 캐시만으로 페이지 내용은 얻을 수 없습니다.",
   },
   {
     id: "cache",
@@ -114,7 +115,7 @@ export const missions = Object.freeze([
     ],
     after: { scenario: "offline", cache: "none", latency: 80 },
     explanation:
-      "캐시를 비우자 오프라인 오류가 드러났습니다. 처음 보인 것은 서버 재검증 없이 사용할 수 있는 최신 페이지 응답입니다. 이 사건의 목표는 연결 복구가 아니라, 네트워크 없이 열린 이유를 검증하는 것입니다. 모든 웹사이트가 오프라인에서 열리는 것은 아닙니다.",
+      "응답 캐시를 비우자 오프라인 오류가 드러났습니다. 처음 표시한 것은 서버를 거치지 않은 유효한 저장 응답이었습니다.",
   },
   {
     id: "dns-cache",
@@ -143,7 +144,7 @@ export const missions = Object.freeze([
     ],
     after: { scenario: "dns-error", cache: "none", latency: 80 },
     explanation:
-      "유효한 DNS 캐시가 IP 주소를 제공해 DNS 서버 조회를 건너뛰었습니다. 캐시를 비우자 실패한 DNS 조회가 나타납니다. DNS 캐시는 주소를 기억하고, 페이지 캐시는 응답 내용을 기억한다는 차이를 확인하는 사건입니다.",
+      "유효한 DNS 캐시가 주소를 제공해 조회 실패를 가렸습니다. 주소 캐시를 비우자 DNS 오류가 나타났고 연결 전에 멈췄습니다.",
   },
   {
     id: "fast",
@@ -172,7 +173,7 @@ export const missions = Object.freeze([
     ],
     after: { scenario: "normal", cache: "http", latency: 80 },
     explanation:
-      "최신 페이지 응답 캐시를 사용하면 DNS, TCP, TLS와 HTTP 요청을 모두 건너뛰어 33 ms가 됩니다. DNS 캐시는 주소 조회만 생략합니다. 여기서는 최신 응답을 재검증 없이 사용할 수 있는 상황이며, 만료된 응답은 별도로 검증해야 합니다.",
+      "유효한 응답 캐시로 DNS·TCP·TLS·HTTP를 생략했습니다. DNS 캐시는 주소 조회만 줄이므로 응답 캐시보다 시간이 오래 걸립니다.",
   },
 ]);
 export function assessAction(
@@ -223,6 +224,7 @@ const event = (node, title, description, duration, error = false, code = title) 
   ({ id: "operation", node, title, description, duration, error, code });
 
 export function createOperation(id = "rescue", variant = 0, hard = false) {
+  if (diagnostics.some((d) => d.id === id)) return createDiagnostic(id, variant, hard);
   const definition = operations.find((o) => o.id === id);
   if (!definition || !Number.isInteger(variant) || variant < 0 || variant > 2 ||
     typeof hard !== "boolean") throw new TypeError("Invalid operation configuration");
@@ -251,6 +253,7 @@ export function createOperation(id = "rescue", variant = 0, hard = false) {
 }
 
 export function operationView(state) {
+  if (state.diagnostic) return diagnosticView(state);
   const definition = operations.find((o) => o.id === state.id);
   if (!definition || !phaseTitles[state.phase]) throw new TypeError("Invalid operation state");
   let choices = [], evidence = "", hint = "";
@@ -317,6 +320,7 @@ export function useOperationHint(state) {
 }
 
 export function takeDecision(previous, actionId) {
+  if (previous.diagnostic) return takeDiagnosticDecision(previous, actionId);
   const view = operationView(previous);
   if (!view.choices.some((a) => a.id === actionId)) throw new TypeError("Invalid operation decision");
   const state = structuredClone(previous), phase = state.phase;

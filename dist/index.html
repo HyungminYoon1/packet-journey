@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="DNS, 경로, TLS와 패킷 유실을 직접 판단하라. 시간과 조치 예산 안에 연결을 복구하는 네트워크 작전."
+      content="DNS, 캐시 만료, 경로, TLS, 패킷 유실과 재시도 연쇄를 비교하는 네트워크 시뮬레이션."
     />
     <meta
       http-equiv="Content-Security-Policy"
@@ -28,8 +28,7 @@
         ><span class="brand-path" aria-hidden="true">⌁</span> PACKET JOURNEY</a
       ><span class="site-type">네트워크 미션</span>
       <div class="header-links">
-        <a href="https://hyungminyoon1.github.io/sense-lab/">SENSE LAB</a
-        ><a
+        <a
           href="https://github.com/HyungminYoon1/packet-journey"
           target="_blank"
           rel="noopener noreferrer"
@@ -40,8 +39,7 @@
     <main id="simulator">
       <aside class="case-rail" aria-label="미션 선택">
         <div class="rail-heading">
-          <p class="eyebrow">THE CONNECTION FILES</p>
-          <h1>연결을 <br />복구하라.</h1>
+          <h1>네트워크 진단</h1>
         </div>
         <div class="mode-switch">
           <button id="operation-mode" class="selected" aria-pressed="true">연결 작전</button>
@@ -63,6 +61,12 @@
             aria-hidden="true"
           ></div>
         </div>
+        <div class="device-progress">
+          <strong id="saved-progress">독립 완료 0 / 42</strong>
+          <small>오답·힌트 없이 완료한 기록 · 이 기기</small>
+          <button id="clear-progress" class="text-button">완료 기록 지우기</button>
+          <p id="storage-status" role="status"></p>
+        </div>
       </aside>
       <div class="case-workspace">
         <section id="operation-controls" class="operation-controls" aria-label="작전 설정">
@@ -79,7 +83,7 @@
             </select></div>
             <button id="new-operation" class="button">다른 조건으로 도전</button>
           </div>
-          <p class="operation-rule">결정 → 요청 기록 확인 → 다음 결정. 시간은 모델 계산값이며 재생 속도와 별개입니다.</p>
+          <p class="operation-rule">기록을 끝까지 확인하면 다음 조치를 선택할 수 있습니다.</p>
           <div id="operation-budget" class="operation-budget" role="status"></div>
         </section>
         <section class="case-heading">
@@ -101,7 +105,7 @@
         </section>
         <section class="journey" aria-label="요청 처리 단계">
           <div class="journey-heading">
-            <span class="eyebrow">REQUEST ROUTE · 시뮬레이션</span
+            <span class="eyebrow">요청 흐름 · 시뮬레이션</span
             ><span id="run-status" class="status-badge">조사 대기</span>
           </div>
           <div class="network-map">
@@ -147,12 +151,12 @@
               aria-label="요청 처음부터 다시 보기"
             >
               ↻</button
-            ><span id="elapsed">0 ms</span>
+            ><span id="elapsed">0 ms (가정)</span>
             <div class="progress"><div id="progress-fill"></div></div>
           </div>
           <div class="terminal">
             <div class="terminal-heading">
-              <span>REQUEST LOG</span><span id="trace-count">0 EVENTS</span>
+              <span>요청 기록 · ms (가정)</span><span id="trace-count">0 EVENTS</span>
             </div>
             <ol id="trace">
               <li class="empty-trace">요청을 실행하면 단서가 나타납니다.</li>
@@ -174,7 +178,8 @@
             <button id="retry-operation" class="button primary">같은 조건 다시 도전</button>
           </div>
           <details class="operation-diagnostics" open>
-            <summary>패킷 · 시간 진단</summary>
+            <summary>요청 · 시간 기록 (ms, 가정)</summary>
+            <p id="diagnostic-summary" class="diagnostic-summary" hidden></p>
             <p id="packet-caption">아직 서버 응답을 요청하지 않았습니다.</p>
             <div id="packet-ledger" class="packet-ledger" aria-label="응답 조각 수신 상태"></div>
             <ol id="operation-timeline" class="operation-timeline" aria-label="결정별 소요 시간"></ol>
@@ -217,8 +222,8 @@
           hidden
         >
           <div class="section-heading">
-            <h2 id="free-title">조건을 바꿔 경로를 비교하세요.</h2>
-            <strong id="estimated-time">390 ms</strong>
+            <h2 id="free-title">요청 조건</h2>
+            <strong id="estimated-time">390 ms (가정)</strong>
           </div>
           <div class="control-grid">
             <div>
@@ -240,7 +245,7 @@
             </div>
             <div>
               <label for="latency"
-                >왕복 지연 <output id="latency-output">80 ms</output></label
+                >왕복 지연 <output id="latency-output">80 ms (가정)</output></label
               ><input
                 id="latency"
                 type="range"
@@ -273,22 +278,19 @@
           <p id="concept-text"></p>
         </section>
         <details class="about">
-          <summary>모델의 원리와 더 배울 곳</summary>
+          <summary>모델과 참고 자료</summary>
           <p>
-            HTTPS over TCP의 처리 단계를 단순화한 시뮬레이션입니다. 지도는
-            처리 단계와 선택한 논리적 홉의 현재 상태를 나타냅니다.
-            시간은 조건 비교를 위한 계산값입니다. DNS 재귀 조회, 연결 재사용,
-            HTTP/3와 병렬 리소스는 생략합니다. 기초 사건의 페이지 캐시는
-            재검증 없이 쓸 수 있는 최신 응답입니다. 연결 작전은 오래된 응답·DNS TTL·
-            인증서 만료·경로 대기열·정해진 패킷 유실과 재전송 대기를 추가합니다.
-            재전송은 한 번에 성공하도록 정한 조건이며 실제 TCP 혼잡 제어 구현은 생략합니다.
+            HTTPS over TCP 모델입니다. 기초 사건은 유효한 캐시를 전제하고,
+            연결 작전은 정해진 경로·유실·재전송 조건을 사용합니다.
+            캐시 만료 진단은 max-age와 ETag 재검증을, 재시도 진단은
+            FIFO 서버 대기열과 두 계층의 시간 초과를 비교합니다.
+            DNS 재귀 조회, 연결 재사용, HTTP/3, TCP 혼잡 제어는 생략합니다.
           </p>
           <p>
-            미션의 조치는 이 모델의 조건만 바꿉니다. 실제 기기의
-            DNS·네트워크·서버 설정을 변경하지 않습니다. 점수는 힌트와 오답
-            횟수에 따른 이번 세션의 기록이며 외부 순위가 아닙니다. 상태는
-            메모리에만 남고, 외부 요청·로그인·분석 도구·영구 저장은 없습니다.
-            GitHub 호스팅 로그는 별개입니다. AI 에이전트와 함께 제작했습니다.
+            실제 요청이나 기기 설정 변경은 없습니다. 점수·요청 기록은 세션에,
+            오답·힌트 없는 완료 항목은 이 기기에 저장합니다. 갤러리에는 완료 수·전체 수·
+            갱신 시각만 공유하며 여기서 완료 기록을 지울 수 있습니다.
+            서버로 전송하지 않습니다.
           </p>
           <p>
             <a
@@ -311,13 +313,14 @@
               rel="noopener noreferrer"
               >MDN · 캐싱</a
             >
+            · <a href="https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/"
+              target="_blank" rel="noopener noreferrer">AWS · 시간 초과와 재시도</a>
           </p>
         </details>
       </div>
     </main>
     <footer>
-      <span>PACKET JOURNEY / THE CONNECTION FILES</span
-      ><span>FOLLOW THE EVIDENCE.</span>
+      <span>PACKET JOURNEY</span>
     </footer>
     <noscript>미션을 플레이하려면 JavaScript를 켜주세요.</noscript>
   </body>

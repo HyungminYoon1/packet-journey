@@ -748,9 +748,6 @@ footer {
   .site-type {
     display: none;
   }
-  .header-links a:first-child {
-    display: none;
-  }
   .action-options {
     grid-template-columns: 1fr;
   }
@@ -978,9 +975,6 @@ footer {
   .section-heading h2 {
     font-size: 1.1rem;
   }
-  footer > span:last-child {
-    display: none;
-  }
 }
 @media (prefers-reduced-motion: reduce) {
   * {
@@ -996,6 +990,14 @@ footer {
   background: var(--paper);
   margin-bottom: 22px;
 }
+.device-progress { display: grid; gap: 6px; padding-top: 16px; border-top: 1px solid var(--line); }
+.device-progress small, #storage-status { font-size: 0.8rem; color: var(--muted); }
+.device-progress .text-button { text-align: left; }
+#storage-status { margin: 0; }
+.diagnostic-summary { padding: 12px; border-left: 3px solid var(--blue); background: #edf1f0; color: var(--ink) !important; }
+.network-map.retry-map { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.mode-switch button { min-height: 44px; }
+.case-workspace, .current-stage > div { min-width: 0; }
 .operation-settings {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

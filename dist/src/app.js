@@ -1,8 +1,11 @@
 import { createJourney, concepts } from "./model.js";
 import { missions, assessAction, operations, createOperation, operationView,
   takeDecision, useOperationHint } from "./missions.js";
+import { diagnostics } from "./diagnostics.js";
+import { createProgressStore } from "./progress.js";
 const $ = (id) => document.getElementById(id),
   reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+const assumed = (text) => text.replace(/\bms\b(?!\s*\(가정\))/g, "ms (가정)");
 const coordinates = {
   browser: "14%",
   dns: "38%",
@@ -38,8 +41,25 @@ let mode = "mission",
   hinted = false,
   currentConfig = { ...missions[0].config };
 const scores = new Map();
-let operation = createOperation(), operationHintText = "";
+let operation = createOperation(), operationHintText = "", operationAwarded = false;
 const operationScores = new Map();
+const achievementIds = [
+  ...missions.map((m) => `case:${m.id}`),
+  ...[...operations, ...diagnostics].flatMap((o) => [0, 1, 2].flatMap((variant) =>
+    [false, true].map((hard) => `${o.id}:${variant}:${hard}`))),
+];
+const progressStore = createProgressStore(achievementIds);
+let storageMessage = "";
+function renderProgress() {
+  $("saved-progress").textContent = `독립 완료 ${progressStore.list().length} / ${achievementIds.length}`;
+  $("storage-status").textContent = storageMessage;
+}
+function recordCompletion(id) {
+  const result = progressStore.complete(id);
+  storageMessage = !result.saved ? "기기에 저장하지 못했습니다."
+    : !result.summary ? "완료 기록 저장됨 · 갤러리 요약 갱신 실패" : "";
+  renderProgress();
+}
 function configuration() {
   return mode === "mission"
     ? currentConfig
@@ -90,7 +110,7 @@ function renderRail() {
       return button;
     }),
   );
-  $("solved-count").textContent = `${scores.size} / 6`;
+  $("solved-count").textContent = `${scores.size} / ${missions.length}`;
   $("total-score").textContent =
     `${[...scores.values()].reduce((a, b) => a + b, 0)} POINTS`;
   $("completion-dots").replaceChildren(
@@ -100,6 +120,7 @@ function renderRail() {
       return span;
     }),
   );
+  renderProgress();
 }
 function updateButtons() {
   const finished = position === journey.stages.length - 1;
@@ -145,8 +166,8 @@ function reset() {
   stop();
   if (mode === "operation") {
     journey = operation.history.at(-1)?.trace || {
-      stages: [{ id: "inspect", node: "browser", title: "먼저 목표와 조건을 비교하세요.",
-        description: "아래 선택지에서 첫 판단을 내리면 그 결과가 요청 기록에 나타납니다.", duration: 0, elapsed: 0, error: false }],
+      stages: [{ id: "inspect", node: "browser", title: "조치 선택 대기",
+        description: "", duration: 0, elapsed: 0, error: false }],
       total: 0, failed: false,
     };
     evidenceReady = operation.history.length === 0;
@@ -155,20 +176,19 @@ function reset() {
   $("step-count").textContent =
     `00 / ${String(journey.stages.length).padStart(2, "0")}`;
   $("stage-title").textContent = mode === "operation"
-    ? operation.history.length ? "결정의 결과를 기록에서 확인하세요." : "목표를 읽고 첫 판단을 선택하세요."
+    ? operation.history.length ? "결과 재생" : "조치 선택 대기"
     : resolving
     ? "조건을 바꿨습니다. 결과를 비교해보세요."
     : mode === "mission"
-      ? "첫 번째 단서는 요청 기록에 있습니다."
-      : "조건을 정하고 요청을 시작하세요.";
-  $("stage-description").textContent =
-    "요청을 실행하고 어떤 단계를 거치는지 확인하세요.";
+      ? "요청 조사 대기"
+      : "요청 대기";
+  $("stage-description").textContent = "";
   $("progress-fill").style.width = "0%";
   $("packet").style.left = coordinates.browser;
   $("packet").classList.remove("failed");
-  $("elapsed").textContent = (mode === "operation" ? operation.history.at(-1)?.before || 0 : 0) + " ms";
-  $("latency-output").value = $("latency").value + " ms";
-  $("estimated-time").textContent = journey.total + " ms";
+  $("elapsed").textContent = (mode === "operation" ? operation.history.at(-1)?.before || 0 : 0) + " ms (가정)";
+  $("latency-output").value = $("latency").value + " ms (가정)";
+  $("estimated-time").textContent = journey.total + " ms (가정)";
   $("cache-hint").textContent =
     configuration().cache === "http"
       ? "최신 페이지 응답을 재사용해 네트워크를 생략합니다."
@@ -178,7 +198,7 @@ function reset() {
   $("trace").replaceChildren(
     Object.assign(document.createElement("li"), {
       className: "empty-trace",
-      textContent: "요청을 실행하면 단서가 나타납니다.",
+      textContent: "기록 없음",
     }),
   );
   $("trace-count").textContent = "0 EVENTS";
@@ -222,20 +242,20 @@ function advance() {
   $("packet").style.left = coordinates[stage.node];
   $("packet").classList.toggle("failed", stage.error);
   $("stage-title").textContent = stage.title;
-  $("stage-description").textContent = stage.description;
+  $("stage-description").textContent = assumed(stage.description);
   $("step-count").textContent =
     `${String(position + 1).padStart(2, "0")} / ${String(journey.stages.length).padStart(2, "0")}`;
   $("progress-fill").style.width =
     `${((position + 1) / journey.stages.length) * 100}%`;
   const elapsed = stage.elapsed + (mode === "operation" ? operation.history.at(-1)?.before || 0 : 0);
-  $("elapsed").textContent = elapsed + " ms";
+  $("elapsed").textContent = elapsed + " ms (가정)";
   document.querySelectorAll("#operation-path span").forEach((hop) =>
     hop.classList.toggle("active", hop.dataset.name === stage.title));
   if (position === 0) $("trace").replaceChildren();
   const row = document.createElement("li"),
     time = document.createElement("time"),
     text = document.createElement("span");
-  time.textContent = elapsed + " ms";
+  time.textContent = elapsed + " ms (가정)";
   text.textContent = stage.code || logCodes[stage.id] || stage.title;
   if (stage.error) text.className = "error-text";
   row.append(time, text);
@@ -246,9 +266,11 @@ function advance() {
     stop();
     if (mode === "operation") {
       evidenceReady = true;
-      if (operation.phase === "complete") {
+      if (operation.phase === "complete" && !operationAwarded) {
+        operationAwarded = true;
         const key = operationKey(), score = operationView(operation).score;
         operationScores.set(key, Math.max(operationScores.get(key) || 0, score));
+        if (!operation.hinted && operation.faults === 0) recordCompletion(key);
       }
       renderOperation();
     }
@@ -291,6 +313,7 @@ function play() {
 }
 function setMode(next) {
   mode = next;
+  $("stage-description").hidden = false;
   $("operation-mode").classList.toggle("selected", mode === "operation");
   $("operation-mode").setAttribute("aria-pressed", String(mode === "operation"));
   $("mission-mode").classList.toggle("selected", mode === "mission");
@@ -309,11 +332,16 @@ function setMode(next) {
 
 function configureMap() {
   const map = document.querySelector(".network-map"), packet = $("packet");
-  const nodes = mode === "operation"
+  const nodes = mode === "operation" && operation.diagnostic
+    ? operation.id === "retry-cascade"
+      ? [["browser", "클라이언트", "▣"], ["connection", "게이트웨이", "◇"], ["server", "서버", "▤"]]
+      : [["browser", "응답 캐시", "▣"], ["dns", "DNS", "◎"], ["connection", "TCP/TLS", "⋈"], ["server", "서버", "▤"]]
+    : mode === "operation"
     ? [["browser", "기기", "▣"], ["dns", "DNS", "◎"], ["gateway", "게이트웨이", "◇"],
       ["router", "중계 홉", "⌁"], ["connection", "TCP/TLS", "⋈"], ["server", "서버", "▤"]]
     : [["browser", "브라우저", "▣"], ["dns", "DNS", "◎"], ["connection", "TCP / TLS", "⋈"], ["server", "웹 서버", "▤"]];
-  map.classList.toggle("operation-map", mode === "operation");
+  map.classList.toggle("operation-map", mode === "operation" && !operation.diagnostic);
+  map.classList.toggle("retry-map", mode === "operation" && operation.id === "retry-cascade");
   map.replaceChildren(...nodes.map(([id, label, icon], index) => {
     coordinates[id] = `${((index + 0.5) / nodes.length) * 100}%`;
     const node = document.createElement("div"), glyph = document.createElement("span"),
@@ -328,14 +356,15 @@ function configureMap() {
 function operationKey() { return `${operation.id}:${operation.variant}:${operation.hard}`; }
 
 function openOperation() {
-  stop(); setMode("operation");
+  stop();
   operation = createOperation($("operation-picker").value, Number($("variant").value), $("difficulty").value === "hard");
+  setMode("operation"); operationAwarded = false;
   operationHintText = ""; resolving = false; solved = false;
   const { definition } = operationView(operation);
   $("case-number").textContent = `OPERATION ${String(operation.variant + 1).padStart(2, "0")}`;
-  $("case-category").textContent = operation.hard ? "HARD / 7 DECISIONS" : "NETWORK OPERATIONS";
+  $("case-category").textContent = `${operation.diagnostic ? "네트워크 진단" : "연결 작전"} · ${operation.hard ? "하드" : "일반"}`;
   $("case-title").textContent = definition.title;
-  $("case-brief").textContent = definition.brief;
+  $("case-brief").textContent = assumed(definition.brief);
   $("case-objective").textContent = definition.goal;
   renderRail(); reset(); renderOperation();
 }
@@ -344,8 +373,8 @@ function chooseOperation(actionId) {
   if (mode !== "operation" || !evidenceReady || running) return;
   operation = takeDecision(operation, actionId);
   reset();
-  $("operation-title").textContent = "판단의 결과를 기록에서 확인하세요.";
-  $("operation-feedback").textContent = "조치를 적용했습니다. 요청 기록을 끝까지 확인하면 다음 판단이 열립니다.";
+  $("operation-title").textContent = "결과 확인 중";
+  $("operation-feedback").textContent = "기록이 끝나면 다음 판단이 열립니다.";
   $("operation-feedback").className = "action-feedback";
   $("operation-feedback").hidden = false;
   $("operation-hint").disabled = true;
@@ -356,28 +385,38 @@ function renderOperation() {
   const view = operationView(operation), finished = ["complete", "failed"].includes(operation.phase),
     route = operation.routes.find((r) => r.id === operation.routeId);
   $("operation-title").textContent = view.title;
-  $("operation-evidence").textContent = view.evidence;
-  $("operation-budget").textContent = `${operation.elapsed} / ${operation.budget} ms · 조치 ${operation.attempts} / ${operation.maxAttempts} · 이 조건 최고 ${operationScores.get(operationKey()) || 0} PT`;
+  $("operation-evidence").textContent = assumed(view.evidence);
+  $("operation-evidence").hidden = finished;
+  $("stage-description").hidden = finished;
+  $("operation-budget").textContent = `${operation.elapsed} / ${operation.budget} ms (가정) · 조치 ${operation.attempts} / ${operation.maxAttempts} · 최고 ${operationScores.get(operationKey()) || 0} PT`;
   $("case-points").textContent = finished ? `${view.score} PT` : `${Math.max(10, 100 - operation.faults * 15 - (operation.hinted ? 20 : 0))} PT`;
   $("operation-choices").replaceChildren(...view.choices.map((choice) => {
     const button = document.createElement("button"), title = document.createElement("strong"), detail = document.createElement("span");
     button.className = "action-option"; title.textContent = choice.label;
-    detail.className = "option-detail"; detail.textContent = choice.detail;
+    detail.className = "option-detail"; detail.textContent = assumed(choice.detail);
     button.append(title, detail); button.addEventListener("click", () => chooseOperation(choice.id));
     return button;
   }));
   $("operation-feedback").textContent = operation.feedback;
   $("operation-feedback").className = "action-feedback" + (operation.phase === "complete" ? " success" : "");
-  $("operation-feedback").hidden = operation.history.length === 0;
+  $("operation-feedback").hidden = finished || operation.history.length === 0;
   $("operation-hint").disabled = operation.hard || operation.hinted || finished || !evidenceReady;
   $("operation-hint").textContent = operation.hard ? "하드 · 힌트 없음" : operation.hinted ? "힌트 사용됨" : "힌트 · −20 PT";
   $("operation-hint-text").hidden = !operationHintText;
   $("operation-hint-text").textContent = operationHintText;
   $("operation-result").hidden = !finished;
-  $("operation-result-title").textContent = operation.phase === "complete" ? `작전 완료 · ${view.score} PT` : "예산 안에 완료하지 못했습니다.";
+  $("operation-result-title").textContent = operation.phase === "complete" ? `${operation.diagnostic ? "진단" : "작전"} 완료 · ${view.score} PT` : "예산 소진";
   $("operation-result-text").textContent = operation.phase === "complete"
-    ? `${operation.elapsed} ms · ${operation.attempts}번의 판단 · ${operation.id === "offline-copy" ? "저장본 표시 / 서버 통신 생략" : `${operation.count}개 조각 수신 / TLS 검증 완료`}`
+    ? operation.diagnostic ? operation.feedback
+    : `${operation.elapsed} ms (가정) · ${operation.attempts}번 판단 · ${operation.id === "offline-copy" ? "저장본 표시" : `${operation.count}개 조각 수신 / TLS 검증`}`
     : operation.feedback;
+  $("diagnostic-summary").hidden = !operation.diagnostic;
+  $("diagnostic-summary").textContent = operation.diagnostic
+    ? operation.id === "cache-expiry"
+      ? `캐시 나이 ${operation.age} / ${operation.lifetime} ms (가정) · 본문 ${operation.body} · HTTP ${operation.status || "요청 전"}`
+      : `${operation.baseline ? `기존: GET ${operation.baseline.submitted}개 · 수신 ${operation.baseline.completed}/3 · 배출 ${operation.baseline.drainTime} ms (가정)` : "GET 3개 · FIFO 처리 슬롯 1개"}${operation.repaired ? ` / 변경 후: GET ${operation.repaired.submitted}개 · 수신 ${operation.repaired.completed}/3 · 배출 ${operation.repaired.drainTime} ms (가정)` : ""}`
+    : "";
+  $("packet-caption").hidden = !!operation.diagnostic;
   $("packet-caption").textContent = operation.id === "offline-copy" && operation.phase === "complete"
     ? "응답 캐시 사용 · 서버 패킷 전송을 생략했습니다."
     : "ACK: 수신 확인 · LOST: 유실 · WAIT: 미전송. 재전송 후에는 ACK로 바뀝니다.";
@@ -392,13 +431,13 @@ function renderOperation() {
   $("operation-timeline").replaceChildren(...operation.history.map((entry) => {
     const row = document.createElement("li"), label = document.createElement("span"), meter = document.createElement("meter"), time = document.createElement("span");
     label.textContent = entry.label; meter.min = 0; meter.max = operation.budget; meter.value = entry.trace.total;
-    meter.setAttribute("aria-label", `${entry.label}: ${entry.trace.total} ms`);
-    time.textContent = `+${entry.trace.total} ms → ${entry.after} ms`;
+    meter.setAttribute("aria-label", `${entry.label}: ${entry.trace.total} ms (가정)`);
+    time.textContent = `+${entry.trace.total} ms → ${entry.after} ms (가정)`;
     const details = document.createElement("details"), summary = document.createElement("summary"), events = document.createElement("ol");
     details.className = "decision-events"; summary.textContent = "이 판단의 요청 기록";
     events.append(...entry.trace.stages.map((stage) => {
       const event = document.createElement("li");
-      event.textContent = `${entry.before + stage.elapsed} ms · ${stage.code || stage.title}`;
+      event.textContent = `${entry.before + stage.elapsed} ms (가정) · ${stage.code || stage.title}`;
       if (stage.error) event.className = "error-text";
       return event;
     }));
@@ -425,7 +464,7 @@ function openCase(index) {
   $("case-number").textContent = `CASE ${String(index + 1).padStart(2, "0")}`;
   $("case-category").textContent = mission.category;
   $("case-title").textContent = mission.title;
-  $("case-brief").textContent = mission.brief;
+  $("case-brief").textContent = assumed(mission.brief);
   $("case-objective").textContent = mission.objective;
   $("case-points").textContent = "100 PT";
   $("hint-text").hidden = true;
@@ -504,6 +543,7 @@ function finishResolution() {
   resolving = false;
   solved = true;
   scores.set(mission.id, Math.max(scores.get(mission.id) || 0, result.score));
+  if (!hinted && wrong === 0) recordCompletion(`case:${mission.id}`);
   $("case-points").textContent = result.score + " PT";
   $("action-feedback").hidden = true;
   $("resolution").hidden = false;
@@ -519,7 +559,7 @@ function finishResolution() {
         strong = document.createElement("strong"),
         p = document.createElement("p");
       small.textContent = label;
-      strong.textContent = run.total + " ms";
+      strong.textContent = run.total + " ms (가정)";
       p.textContent = `${run.stages.length}단계 · ${run.failed ? "요청 중단" : "페이지 표시"}`;
       box.append(small, strong, p);
       return box;
@@ -534,6 +574,10 @@ function finishResolution() {
   renderRail();
 }
 $("play").addEventListener("click", play);
+$("clear-progress").addEventListener("click", () => {
+  storageMessage = progressStore.clear() ? "기기 완료 기록을 지웠습니다." : "기록 삭제를 완료하지 못했습니다.";
+  renderProgress();
+});
 $("step").addEventListener("click", () => {
   stop();
   advance();
@@ -593,7 +637,7 @@ document.addEventListener("visibilitychange", () => {
 });
 window.addEventListener("pagehide", stop);
 $("concept-text").textContent = concepts.dns;
-$("operation-picker").replaceChildren(...operations.map((entry) => {
+$("operation-picker").replaceChildren(...[...operations, ...diagnostics].map((entry) => {
   const option = document.createElement("option"); option.value = entry.id; option.textContent = entry.short; return option;
 }));
 openOperation();

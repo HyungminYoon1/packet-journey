@@ -1,5 +1,28 @@
 # 검증 기록
 
+## 2026-10-09 캐시 만료·재시도 연쇄·기기 완료 — LOCAL
+
+- 작업 범위: packet-journey만 수정. 초기 git status는 clean. 다른 에이전트 생성, 커밋, 푸시, 배포, 계정 접근, 프로비저닝, 갤러리/형제 저장소 수정 없음.
+- SOURCE INSPECTION: architecture.md → README.md 및 docs/decisions.md 전체 VERIFIED. api-spec.md/requirements.md는 파일 목록에 없음(NOT_PRESENT). dist의 기존 index.html/styles.css/src 3개, test 4개, tools 2개, package.json, .gitattributes, .gitignore, Pages workflow, 검증 문서 전체 VERIFIED. 저장소 디렉터리는 관련 파일 선별 검토(PARTIAL); .git 내부, node_modules, 비밀 파일은 내용 검토 제외. 형제 저장소는 15개 서비스 ID 확인을 위한 디렉터리명 목록만 확인(PARTIAL inventory), 파일 내용 NOT_INSPECTED / 수정 없음. web-lab NOT_INSPECTED / 수정 없음.
+- 기준 코드: npm test 31/31, npm run check PASS. 현재 Node.js 22.23.2. 기존 테스트/점수/개인정보 검사와 4작전·6사건 캠페인을 제거하거나 완화하지 않았습니다.
+- 최종 npm test: 53/53 PASS. 기존 요청/기초 14 + 기존 작전/전송 15 + 진단 모델 11 + 저장 경계 8 + Node DOM·타이머 더블 UI 5. 기존 24개 작전 조합과 새 12개 진단 조합 모두 실제 노출된 선택을 통해 완료 가능.
+- 캐시 모델: max-age 직전/동일 시점 유효성, 본문 유지, 조건부 GET, 304 본문 미전송·v1 재사용, 조건 02의 200·v2 교체, 응답 수신 후 나이 재설정, 저장본 무검증 사용·DNS 삭제·잘못된 원인 거부, 누적 시간과 예산/힌트 검사. 일반/하드의 정답 경로 시간은 조건별 985/2065/2985 ms(가정).
+- 재시도 모델: 3개 GET이 실제 27개 FIFO 서버 작업으로 확대. 조건별 작업 처리 120/160/200 ms, 대기 한도 80/100/120 ms. 최대 대기 24개, 제때 수신 0/3, 서버 대기열 배출 3240/4320/5400 ms(가정). 수정 정책은 원래 GET 3개, 최대 대기 2개, 수신 3/3, 배출 360/480/600 ms(가정). 서버 작업 간 중첩 없음과 도착 전 처리 없음, 기한 후 작업 지속, 일부 응답에서 해당 시도만 재시도 중단, 기존 정책 반복·대기 한도만 두 배의 불충분한 결과, 잘못된 원인과 예산 초과 검사. 정답 경로 누적 시간은 3600/4800/6000 ms(가정), 서로 별도 요청군을 순차 비교한 값.
+- 저장 모델: 정확한 15 ID/필드/정수/ISO/버전/크기 검증, 독립 완료 ID 중복 제거와 read-back count, 초기 읽기 무작성, 새로고침 복원, 다른 앱 기록 및 관련 없는 키 보존, malformed/unknown state 보존, 거부/용량 초과, 요약만 저장 실패 후 실제 완료에서 복구. private key에는 완료 ID만, shared key에는 count/total/updatedAt만 기록. 한 항목이 바뀌어도 다른 앱의 private key를 읽지 않음.
+- UI TEST_DOUBLE: 실제 app.js로 기본 작전·유실 복구·재생·모드 전환·WebMCP 입력 거부를 유지. 캐시 304와 재시도 27→3 진단 walkthrough, 끝나지 않은 단계의 완료 미등록, 힌트·오답 결과 표시와 독립 배지 제외, 최초 보기/재조회 무작성, 새로고침 복원, 삭제 뒤 재생으로 복원하지 않음, 기초 사건 독립 완료를 검증. 실제 브라우저 DOM/스토리지/API/레이아웃 또는 지원 WebMCP 런타임 증거가 아님.
+- npm run check: PASS. git diff --check 및 변경 텍스트 UTF-8 무 BOM/CRLF 검사: PASS. CSP connect-src 'none', 외부 요청 없음, 새 패키지/백엔드/순위 없음. 외부 참고 MDN 3개와 AWS Builder Library URL은 실제 공개 문서로 열림(2026-10-09); AWS 링크는 공식 Builder Center로 리디렉션됨.
+- 변경 파일 14개: architecture.md, README.md, docs/decisions.md, docs/verification.md; dist/index.html, dist/styles.css, dist/src/app.js, dist/src/model.js, dist/src/missions.js, dist/src/diagnostics.js(신규), dist/src/progress.js(신규); test/interface.test.js, test/diagnostics.test.js(신규), test/progress.test.js(신규).
+- BROWSER_E2E / SCREENSHOT / REMOTE_CI / LIVE: 현재 수정은 NOT_RUN. 브라우저와 공개 배포 검증은 메인 담당. 아래 과거 기록은 이전 코드에만 해당.
+
+### 메인 담당의 실제 화면 캡처·정상 상호작용 인계
+
+저장소에서 `npm run dev -- 0` 실행 후 출력된 loopback URL을 엽니다. 재생 속도는 8×로 선택해도 가정 시간/완료 조건은 바뀌지 않습니다. 각 선택 후 기록이 끝나고 다음 선택이 열릴 때까지 기다립니다. 단순 첫 화면 대신 결과와 비교 지표가 보이는 상태를 캡처합니다.
+
+1. 연결 작전의 작전 선택 → **캐시 만료 진단**, 조건 01, 일반 → **만료 전 응답 사용** → **만료 시점까지 시간 진행**. 캐시 나이 1000/1000 ms(가정), 본문 v1, HTTP 요청 전 상태 캡처. **ETag로 조건부 재검증** → **유효 시간이 지나 재검증함** → 진단 완료 100 PT, HTTP 304/v1, 캐시 나이 25 ms, 기록의 If-None-Match/304를 캡처합니다. 조건 02 같은 순서로 HTTP 200/v2 교체를 비교합니다.
+2. **재시도 연쇄 진단**, 조건 01, 일반 → **현재 재시도 기록 확인**. 접수 27개/최대 대기 24개/제때 수신 0/3과 TIMEOUT·200 LATE 기록을 캡처합니다. **재시도는 클라이언트 한 곳에서** → **겹친 재시도가 대기열을 늘림**. 완료 100 PT, 접수 27→3개, 최대 대기 24→2개, 수신 3/3, 기존/변경 후 배출 시간을 캡처합니다. 같은 조건 재도전에서 **대기 한도만 두 배로**를 골라 불충분한 결과와 감점도 확인합니다.
+3. 오답·힌트 없는 두 진단 완료는 독립 완료 수를 각 1개씩 늘립니다. 같은 조건 재도전/결과 재생은 중복 개수를 늘리지 않습니다. 새로고침에서 완료 수 복원; 완료 기록 지우기에서 own private key와 summary.apps['packet-journey']만 사라지고 다른 앱 항목 보존. 삭제 후 이전 결과 재생으로 완료가 되살아나면 실패입니다. 공용 요약 검증은 갤러리와 **같은 origin**에서만 실시; 임시 포트 둘은 공유되지 않습니다.
+4. 320/390px 화면에서 dropdown/44px controls, 3/4노드 진단 지도, 긴 요청 기록/가정 시간/결과 요약의 가로 넘침, 키보드 초점, aria-live와 일시정지/한 단계씩/감소된 모션을 확인합니다. 진단 결과와 아래 ‘요청·시간 기록’ 요약이 함께 보이도록 스크롤합니다. 기존 캠페인 첫 작전 유실 복구와 기초/자유 실험도 회귀 확인합니다. 실제 브라우저의 콘솔 오류·저장 거부 표시를 별도 기록합니다.
+
 ## 2026-10-09 연결 작전 확장 — LOCAL
 
 - 환경: Windows / PowerShell 7.6.6 / Node.js 22.23.2. 담당 저장소에만 수정했으며 커밋·푸시·배포·원격 변경을 수행하지 않았습니다.
