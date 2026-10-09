@@ -123,7 +123,7 @@ main {
   margin: 0 0 20px;
 }
 .mode-switch button {
-  width: 50%;
+  flex: 1;
   border: 0;
   background: transparent;
   font-size: 0.875rem;
@@ -988,4 +988,100 @@ footer {
     animation: none !important;
     scroll-behavior: auto !important;
   }
+}
+
+.operation-controls {
+  border: 1px solid var(--line);
+  padding: 16px;
+  background: var(--paper);
+  margin-bottom: 22px;
+}
+.operation-settings {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+.operation-settings label {
+  display: block;
+  font-size: 0.8rem;
+  margin-bottom: 5px;
+}
+.operation-settings select {
+  width: 100%;
+  min-height: 44px;
+  background: white;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  padding: 6px;
+}
+.operation-settings .button { grid-column: 1 / -1; justify-self: start; }
+.operation-rule { font-size: 0.875rem; color: var(--muted); margin: 14px 0 8px; }
+.operation-budget { font: 0.875rem/1.7 var(--mono); color: var(--blue); }
+.network-map.operation-map {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  padding-left: 0;
+  padding-right: 0;
+}
+.operation-map .network-node strong { font-size: 0.8rem; }
+.operation-map .node-icon { width: 44px; height: 44px; font-size: 1.45rem; }
+.operation-map .node-state { font-size: 0.65rem; }
+.operation-map .packet { top: 52px; }
+.operation-map::before { top: 52px; }
+.operation-path {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 22px;
+  border-top: 1px solid #ffffff20;
+  font-size: 0.8rem;
+  color: #b9c7d1;
+}
+.operation-path span + span::before { content: "→ "; color: var(--yellow); }
+.operation-path .active { color: var(--yellow); }
+#operation-choices .action-option { display: block; }
+#operation-choices .option-detail {
+  font: 0.8rem/1.7 var(--font);
+  margin: 8px 0 0;
+}
+.operation-result { border-top: 1px dashed var(--line); margin-top: 22px; padding-top: 12px; }
+.operation-result h3 { margin-bottom: 8px; }
+.operation-diagnostics { margin-top: 22px; border-top: 1px solid var(--line); padding-top: 16px; }
+.operation-diagnostics summary { font-weight: 650; }
+.operation-diagnostics p { font-size: 0.8rem; color: var(--muted); }
+.packet-ledger { display: flex; flex-wrap: wrap; gap: 7px; }
+.packet-chip { font: 0.8rem var(--mono); padding: 8px; border: 1px solid var(--line); background: #edf1f0; }
+.packet-chip.ack { border-color: #20865f; background: #e0f3eb; color: #125b3f; }
+.packet-chip.lost { border-color: #d35330; background: #ffe7df; color: #992b12; }
+.operation-timeline { list-style: none; padding: 0; margin: 18px 0 0; }
+.operation-timeline li {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(50px, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  font-size: 0.8rem;
+}
+.operation-timeline meter { width: 100%; height: 14px; }
+.operation-timeline li > span:last-child { font: 0.75rem var(--mono); }
+.operation-timeline .decision-events { grid-column: 1 / -1; }
+.decision-events summary { font-size: 0.75rem; font-weight: 400; color: var(--muted); }
+.decision-events ol { margin: 8px 0; padding: 0 0 0 18px; }
+.operation-timeline .decision-events li { display: list-item; border: 0; padding: 3px 0; font: 0.75rem/1.7 var(--mono); }
+.decision-events .error-text { color: #992b12; }
+@media (max-width: 900px) {
+  .operation-settings { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .operation-map .node-icon { width: 32px; height: 32px; font-size: 1.2rem; }
+  .operation-map .node-state { font-size: 0.6rem; }
+}
+@media (max-width: 700px) {
+  .operation-map .network-node strong { font-size: 0.7rem; }
+  .operation-map .node-state { display: none; }
+  .network-map.operation-map { min-height: 130px; }
+  .operation-path { order: 2; padding: 10px 14px; }
+  .operation-timeline li { grid-template-columns: 1fr auto; gap: 6px; }
+  .operation-timeline meter { grid-column: 1 / -1; grid-row: 2; }
+  .operation-map .packet { top: 45px; }
+  .operation-map::before { top: 45px; }
 }

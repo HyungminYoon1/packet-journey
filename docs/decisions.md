@@ -1,5 +1,32 @@
 # Decision log
 
+## D10 — Sequential connection operations (2026-10-09, local implementation only)
+
+- Context: owner requested more interactive and challenging networking learning; the existing six cases ended after a single correct action and wrong choices had no model consequences.
+- Options: replace the six cases; attach more passive stages; add a sequential operation state machine alongside the existing cases and sandbox.
+- Decision: make connection operations the initial mode. Four goals with three deterministic condition variants drive cache, DNS, route, TLS, transmission and loss-recovery decisions. Every action consumes modeled time and an attempt; inappropriate actions leave the incident unresolved. Keep all state transitions/assessment in missions.js, calculations/traces in model.js and only orchestration/rendering in app.js.
+- Rationale: creates actual consequences and multi-hop recovery while retaining the documented pure-model/UI boundary and existing lessons.
+- Affected files: dist/src/model.js, missions.js, app.js, dist/index.html, styles.css, test/operations.test.js, interface.test.js, README.md.
+- Review: modeled routes are logical hops, not measured physical routes. DNS TTL and response freshness are predefined conditions, not a real cache expiry clock or HTTP revalidation implementation. Static hosting and connect-src 'none' remain intact; no backend, Neon, new dependency, external asset, runtime service or network diagnosis. Browser preview/QA belongs to the main agent.
+
+## D11 — Budgeted goals and deterministic transport
+
+- Context: route choice, congestion and packet loss must have observable tradeoffs and hard mode must remain solvable.
+- Options: random uncontrolled failures; one universal correct path; deterministic conditions with several feasible strategies and explicit budgets.
+- Decision: three routes with separate hop count, RTT, queue, outage and fixed loss sets. Burst/paced transfer, selective/full retransmission and reconnection expose different costs. A reconnect drops earlier received fragments and requires TLS again. In the simplified model retransmission succeeds once; pacing reduces queue to one quarter and uses a separate loss set. Only a complete authenticated response satisfies latest-response goals; the offline saved-copy goal can use an old stored response. TLS bypass never advances toward authenticated completion.
+- Rationale: teaches route length versus latency, response completeness and endpoint trust without pretending to implement a TCP stack or real certificate administration.
+- Affected files: dist/src/model.js, missions.js, test/operations.test.js, README.md.
+- Review: general mode permits 12 actions and one hint; hard mode permits 7 actions, 70% of the time budget and no hint. Complete on the final allowed action is valid if within time. All 24 configuration combinations have a tested viable path. Fixed RTO/loss behavior and omitted congestion-window/ACK algorithms must stay documented.
+
+## D12 — In-memory diagnostics and validation boundaries
+
+- Context: replay, scoring and diagnostics need to support learning without retention or confusing past publication evidence with this local revision.
+- Options: persisted scores/network telemetry; current-step-only display; session-local condition scores and decision/packet history.
+- Decision: keep best score per operation/variant/difficulty and packet/decision history in memory. Award only after the decision trace has finished; replay does not spend another action or add time. Display one unobtrusive simulation identity plus packet ACK/LOST/retry states, chosen logical path, cumulative timings and expandable previous traces. Retain existing free-experiment WebMCP tools; reject missing required configuration fields before any UI mutation.
+- Rationale: gives actionable evidence and replay with the existing no-storage/no-network boundary. Invalid tool inputs cannot partially change the screen. Node DOM/timer test doubles are labeled separately from browser and supported-WebMCP evidence.
+- Affected files: dist/src/app.js, index.html, styles.css, test/interface.test.js, docs/verification.md, README.md.
+- Review: reload clears scores/history. Client scores are not tamper-proof, global rankings or capability assessments. Existing 2026-10-08 browser/REMOTE_CI/LIVE records describe earlier code only. This session authorizes no commit, push, deployment or other remote mutation.
+
 ## D08 — Evidence-led missions (2026-10-08 redesign)
 
 - Context: owner approved a complete redesign around solving connection incidents instead of passively watching a route.

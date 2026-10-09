@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="페이지가 열리지 않는 이유를 찾아라. DNS, 서버 오류, 오프라인, 캐시의 단서를 조사하고 해결하는 네트워크 미션 게임."
+      content="DNS, 경로, TLS와 패킷 유실을 직접 판단하라. 시간과 조치 예산 안에 연결을 복구하는 네트워크 작전."
     />
     <meta
       http-equiv="Content-Security-Policy"
@@ -26,7 +26,7 @@
     <header class="topbar">
       <a class="wordmark" href="./"
         ><span class="brand-path" aria-hidden="true">⌁</span> PACKET JOURNEY</a
-      ><span class="site-type">네트워크 미션 / 시뮬레이션</span>
+      ><span class="site-type">네트워크 미션</span>
       <div class="header-links">
         <a href="https://hyungminyoon1.github.io/sense-lab/">SENSE LAB</a
         ><a
@@ -44,8 +44,9 @@
           <h1>연결을 <br />복구하라.</h1>
         </div>
         <div class="mode-switch">
-          <button id="mission-mode" class="selected" aria-pressed="true">
-            미션</button
+          <button id="operation-mode" class="selected" aria-pressed="true">연결 작전</button>
+          <button id="mission-mode" aria-pressed="false">
+            기초 사건</button
           ><button id="free-mode" aria-pressed="false">자유 실험</button>
         </div>
         <nav id="case-list" aria-label="사건 목록"></nav>
@@ -54,7 +55,7 @@
           ><select id="case-picker"></select>
         </div>
         <div class="rail-score">
-          <span>이번 세션 해결</span><strong id="solved-count">0 / 6</strong
+          <span>이번 세션 기초 사건 해결</span><strong id="solved-count">0 / 6</strong
           ><span id="total-score">0 POINTS</span>
           <div
             class="completion-dots"
@@ -64,6 +65,23 @@
         </div>
       </aside>
       <div class="case-workspace">
+        <section id="operation-controls" class="operation-controls" aria-label="작전 설정">
+          <div class="operation-settings">
+            <div><label for="operation-picker">작전</label><select id="operation-picker"></select></div>
+            <div><label for="variant">조건</label><select id="variant">
+              <option value="0">조건 01</option><option value="1">조건 02</option><option value="2">조건 03</option>
+            </select></div>
+            <div><label for="difficulty">난이도</label><select id="difficulty">
+              <option value="normal">일반 · 힌트 / 12회</option><option value="hard">하드 · 힌트 없음 / 7회</option>
+            </select></div>
+            <div><label for="operation-speed">기록 재생 속도</label><select id="operation-speed">
+              <option value="4">4×</option><option value="8">8×</option><option value="1">1×</option>
+            </select></div>
+            <button id="new-operation" class="button">다른 조건으로 도전</button>
+          </div>
+          <p class="operation-rule">결정 → 요청 기록 확인 → 다음 결정. 시간은 모델 계산값이며 재생 속도와 별개입니다.</p>
+          <div id="operation-budget" class="operation-budget" role="status"></div>
+        </section>
         <section class="case-heading">
           <div class="case-tag">
             <span id="case-number">CASE 01</span
@@ -83,7 +101,7 @@
         </section>
         <section class="journey" aria-label="요청 처리 단계">
           <div class="journey-heading">
-            <span class="eyebrow">REQUEST ROUTE</span
+            <span class="eyebrow">REQUEST ROUTE · 시뮬레이션</span
             ><span id="run-status" class="status-badge">조사 대기</span>
           </div>
           <div class="network-map">
@@ -109,6 +127,7 @@
             </div>
             <span id="packet" class="packet" aria-hidden="true"></span>
           </div>
+          <div id="operation-path" class="operation-path" hidden aria-label="선택 경로"></div>
           <div class="current-stage">
             <span id="step-count">00 / 02</span>
             <div>
@@ -139,6 +158,27 @@
               <li class="empty-trace">요청을 실행하면 단서가 나타납니다.</li>
             </ol>
           </div>
+        </section>
+        <section id="operation-actions" class="mission-actions" aria-labelledby="operation-title">
+          <div class="section-heading">
+            <h2 id="operation-title">첫 판단을 선택하세요.</h2>
+            <button id="operation-hint" class="text-button">힌트 · −20 PT</button>
+          </div>
+          <p id="operation-evidence"></p>
+          <p id="operation-hint-text" class="hint-text" hidden></p>
+          <div id="operation-choices" class="action-options"></div>
+          <p id="operation-feedback" class="action-feedback" role="status"></p>
+          <div id="operation-result" class="operation-result" hidden>
+            <h3 id="operation-result-title"></h3>
+            <p id="operation-result-text"></p>
+            <button id="retry-operation" class="button primary">같은 조건 다시 도전</button>
+          </div>
+          <details class="operation-diagnostics" open>
+            <summary>패킷 · 시간 진단</summary>
+            <p id="packet-caption">아직 서버 응답을 요청하지 않았습니다.</p>
+            <div id="packet-ledger" class="packet-ledger" aria-label="응답 조각 수신 상태"></div>
+            <ol id="operation-timeline" class="operation-timeline" aria-label="결정별 소요 시간"></ol>
+          </details>
         </section>
         <section
           id="mission-actions"
@@ -236,10 +276,12 @@
           <summary>모델의 원리와 더 배울 곳</summary>
           <p>
             HTTPS over TCP의 처리 단계를 단순화한 시뮬레이션입니다. 지도는
-            물리적인 패킷 이동 경로가 아니라 처리 단계와 현재 상태를 나타냅니다.
+            처리 단계와 선택한 논리적 홉의 현재 상태를 나타냅니다.
             시간은 조건 비교를 위한 계산값입니다. DNS 재귀 조회, 연결 재사용,
-            HTTP/3, 병렬 리소스, 캐시 만료·재검증은 생략합니다. 페이지 캐시는
-            서버 재검증 없이 쓸 수 있는 최신 응답을 전제로 합니다.
+            HTTP/3와 병렬 리소스는 생략합니다. 기초 사건의 페이지 캐시는
+            재검증 없이 쓸 수 있는 최신 응답입니다. 연결 작전은 오래된 응답·DNS TTL·
+            인증서 만료·경로 대기열·정해진 패킷 유실과 재전송 대기를 추가합니다.
+            재전송은 한 번에 성공하도록 정한 조건이며 실제 TCP 혼잡 제어 구현은 생략합니다.
           </p>
           <p>
             미션의 조치는 이 모델의 조건만 바꿉니다. 실제 기기의

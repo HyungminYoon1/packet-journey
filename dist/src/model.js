@@ -142,3 +142,98 @@ export const concepts = {
   cache:
     "DNS 캐시는 이름과 주소의 매핑을, 페이지 캐시는 응답 내용을 재사용합니다. 최신 페이지 캐시가 있으면 이 모델에서는 네트워크 전체를 건너뜁니다. 만료와 재검증은 생략합니다.",
 };
+
+// Operation traces are logical events with modeled times, not captured traffic.
+export function createTrace(events, offset = 0) {
+  if (!Array.isArray(events) || events.length === 0 ||
+    !Number.isFinite(offset) || offset < 0 ||
+    events.some((event) => !event || !Number.isFinite(event.duration) || event.duration < 0))
+    throw new TypeError("Invalid trace");
+  let elapsed = offset;
+  const stages = events.map((event) => {
+    elapsed += event.duration;
+    return { error: false, ...event, elapsed };
+  });
+  return {
+    stages,
+    total: elapsed - offset,
+    failed: stages.some((stage) => stage.error),
+  };
+}
+
+export function createRouteTrace(route) {
+  validateRoute(route);
+  const hops = route.hops.map((name, index) => ({
+    id: "hop",
+    node: index === 0 ? "gateway" : "router",
+    title: name,
+    description: `${route.label} · 홉 ${index + 1}/${route.hops.length} · 편도 처리`,
+    duration: Math.round(route.rtt / (2 * route.hops.length)),
+    code: `HOP ${index + 1} · ${name}`,
+  }));
+  return createTrace([
+    ...hops,
+    {
+      id: "tcp",
+      node: "connection",
+      title: route.down ? "경로에서 응답이 돌아오지 않습니다." : "TCP 연결 성립",
+      description: route.down
+        ? "중계 링크가 끊겨 SYN 응답을 기다리다 시간 초과했습니다. 다른 경로를 선택하세요."
+        : `RTT ${route.rtt} ms · 대기열 ${route.queue} ms · TLS는 아직 확인하지 않았습니다.`,
+      duration: route.down ? route.rtt * 3 : Math.round(route.rtt / 2),
+      error: route.down,
+      code: route.down ? "SYN · TIMEOUT" : "TCP · CONNECTED",
+    },
+  ]);
+}
+
+export function transferPackets({ route, count, strategy, missing = [] }) {
+  validateRoute(route);
+  if (
+    !Number.isInteger(count) || count < 4 || count > 12 ||
+    !["burst", "pace", "retry-missing", "retry-all"].includes(strategy) ||
+    !Array.isArray(missing) || new Set(missing).size !== missing.length ||
+    missing.some((id) => !Number.isInteger(id) || id < 1 || id > count) ||
+    (strategy === "retry-missing" && missing.length === 0) || route.down
+  ) throw new TypeError("Invalid transmission");
+  const retry = strategy.startsWith("retry"),
+    ids = strategy === "retry-missing"
+      ? [...missing].sort((a, b) => a - b)
+      : Array.from({ length: count }, (_, i) => i + 1),
+    lost = retry ? [] : strategy === "pace" ? route.pacedLoss : route.loss,
+    queue = strategy === "pace" ? Math.round(route.queue / 4) : route.queue,
+    events = [{
+      id: "request", node: "server", title: retry ? "재전송 시작" : "HTTP 응답 데이터 전송",
+      description: `RTT ${route.rtt} ms + 대기열 ${queue} ms. ${strategy === "pace" ? "전송 간격을 두어 대기열을 줄입니다." : "선택한 패킷을 한 번에 보냅니다."}`,
+      duration: route.rtt + queue, code: retry ? "TCP · RETRANSMIT" : "HTTP · 200 / DATA",
+    }], packets = [];
+  for (const id of ids) {
+    const dropped = lost.includes(id);
+    packets.push({ id, status: dropped ? "lost" : "ack", retry });
+    events.push({
+      id: dropped ? "loss" : "ack", node: dropped ? "router" : "browser",
+      title: `패킷 #${id} ${dropped ? "유실" : "수신 확인"}`,
+      description: dropped
+        ? "응답 조각이 도착하지 않았습니다. 누락된 조각을 재전송해야 완성됩니다."
+        : `#${id} 조각을 수신했습니다. ACK를 묶어 확인하는 과정은 단순화했습니다.`,
+      duration: strategy === "pace" ? 12 : 4, error: dropped,
+      code: `SEQ ${id} · ${dropped ? "LOST" : "ACK"}${retry ? " · RETRY" : ""}`,
+    });
+  }
+  if (packets.some((p) => p.status === "lost")) events.push({
+    id: "timeout", node: "connection", title: "누락된 패킷을 기다립니다.",
+    description: "이 모델은 고정 재전송 대기 시간을 사용합니다. 아직 완전한 응답이 아닙니다.",
+    duration: route.rtt * 2, error: true, code: "RTO · MISSING DATA",
+  });
+  return { ...createTrace(events), packets };
+}
+
+function validateRoute(route) {
+  if (!route || !Number.isFinite(route.rtt) || route.rtt <= 0 ||
+    !Number.isFinite(route.queue) || route.queue < 0 ||
+    !Array.isArray(route.hops) || route.hops.length < 2 ||
+    route.hops.some((name) => typeof name !== "string" || name.length === 0) ||
+    !Array.isArray(route.loss) || !Array.isArray(route.pacedLoss) ||
+    [...route.loss, ...route.pacedLoss].some((id) => !Number.isInteger(id) || id < 1) ||
+    typeof route.down !== "boolean") throw new TypeError("Invalid route");
+}
